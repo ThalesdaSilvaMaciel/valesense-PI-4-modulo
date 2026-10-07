@@ -7,12 +7,12 @@ export type MarketDataEntry = {
   data: string;
 };
 
-const PRODUTOS = ["Manga", "Uva", "Goiaba", "Melão"] as const;
+const PRODUTOS = ["Uva"] as const;
 const DEMANDAS: MarketDataEntry["demanda"][] = ["baixa", "media", "alta"];
-const PRECO_BASE: Record<(typeof PRODUTOS)[number], number> = { Manga: 4.2, Uva: 9.8, Goiaba: 3.5, Melão: 2.9 };
+const PRECO_BASE: Record<(typeof PRODUTOS)[number], number> = { Uva: 9.8 };
 
 function dayVariation(productIndex: number, dayIndex: number) {
-  return (((productIndex * 17 + dayIndex * 7) % 7) - 3) * 0.1;
+  return (((productIndex * 5 + dayIndex * 3) % 7) - 3) * 0.15;
 }
 
 export function listMarketData(days = 7): MarketDataEntry[] {

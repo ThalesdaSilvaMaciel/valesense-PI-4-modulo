@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
-import { env } from "../../config/env.js";
 import { authenticate } from "../../middleware/authenticate.js";
+import { authRateLimit } from "../../middleware/rate-limit.js";
 import { signToken } from "./token.js";
 import { toPublicUser } from "./auth.types.js";
 import { requestPasswordReset, resetPassword } from "./password-reset.service.js";
@@ -36,7 +36,7 @@ const passwordResetResponse = {
 export const authRouter = Router();
 
 
-authRouter.post("/register", async (request, response, next) => {
+authRouter.post("/register", authRateLimit, async (request, response, next) => {
   try {
     const input = registerSchema.parse(request.body);
     if (await userRepository.findByEmail(input.email)) {
@@ -53,7 +53,7 @@ authRouter.post("/register", async (request, response, next) => {
   }
 });
 
-authRouter.post("/login", async (request, response, next) => {
+authRouter.post("/login", authRateLimit, async (request, response, next) => {
   try {
     const input = loginSchema.parse(request.body);
     const user = await userRepository.findByEmail(input.email);
@@ -67,15 +67,10 @@ authRouter.post("/login", async (request, response, next) => {
   }
 });
 
-authRouter.post("/forgot-password", async (request, response, next) => {
+authRouter.post("/forgot-password", authRateLimit, async (request, response, next) => {
   try {
     const { email } = forgotPasswordSchema.parse(request.body);
-    const reset = await requestPasswordReset(email);
-
-    if (reset && env.NODE_ENV === "development") {
-      console.info(`[password-reset] Link de teste para ${reset.email}: http://localhost:5173/reset-password?token=${reset.token}`);
-    }
-
+    await requestPasswordReset(email);
     return response.status(200).json(passwordResetResponse);
   } catch (error) {
     next(error);

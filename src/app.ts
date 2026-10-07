@@ -3,6 +3,8 @@ import express from "express";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
+import { alertsRouter } from "./modules/alerts/alerts.routes.js";
+import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
 import { marketDataRouter } from "./modules/market-data/market-data.routes.js";
 import { usersRouter } from "./modules/users/users.routes.js";
 import { weatherDataRouter } from "./modules/weather-data/weather-data.routes.js";
@@ -13,6 +15,8 @@ app.use(express.json());
 
 app.get("/health", (_request, response) => response.status(200).json({ status: "ok" }));
 app.use("/api/auth", authRouter);
+app.use("/api/alerts", alertsRouter);
+app.use("/api/dashboard", dashboardRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/market-data", marketDataRouter);
 app.use("/api/weather-data", weatherDataRouter);

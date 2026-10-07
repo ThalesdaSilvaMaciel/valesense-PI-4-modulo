@@ -11,6 +11,26 @@ const envSchema = z.object({
   ADMIN_NAME: z.string().min(2).optional(),
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
+  WEATHER_SOURCE: z.enum(["mock", "thingspeak"]).default("mock"),
+  THINGSPEAK_CHANNEL_ID: z.string().min(1).optional(),
+  THINGSPEAK_READ_KEY: z.string().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.WEATHER_SOURCE === "thingspeak") {
+    if (!value.THINGSPEAK_CHANNEL_ID) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["THINGSPEAK_CHANNEL_ID"],
+        message: "Obrigatório quando WEATHER_SOURCE=thingspeak",
+      });
+    }
+    if (!value.THINGSPEAK_READ_KEY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["THINGSPEAK_READ_KEY"],
+        message: "Obrigatório quando WEATHER_SOURCE=thingspeak",
+      });
+    }
+  }
 });
 
 const parsed = envSchema.safeParse(process.env);
