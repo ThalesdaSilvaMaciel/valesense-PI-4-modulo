@@ -1,4 +1,4 @@
-export const USER_ROLES = ["ADMIN", "ANALISTA"] as const;
+export const USER_ROLES = ["ADMIN", "ANALISTA", "PRODUTOR_EXPORTADOR"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 export const USER_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
@@ -11,8 +11,6 @@ export type User = {
   passwordHash: string;
   role: UserRole;
   status: UserStatus;
-  createdAt: Date;
-  updatedAt: Date;
 };
 
 export type PublicUser = Omit<User, "passwordHash">;

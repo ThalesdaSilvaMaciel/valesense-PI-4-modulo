@@ -1,6 +1,7 @@
-import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
+import type { Usuario as DatabaseUser } from "@prisma/client";
 import { env } from "../../config/env.js";
+import { prisma } from "../../lib/prisma.js";
 import type { User, UserRole, UserStatus } from "./auth.types.js";
 
 export type CreateUserInput = {
@@ -23,81 +24,106 @@ export interface UserRepository {
   updateStatus(id: string, status: UserStatus): Promise<User | null>;
 }
 
-class InMemoryUserRepository implements UserRepository {
-  private readonly users: User[] = [];
+const roleToProfile: Record<UserRole, string> = {
+  ADMIN: "ADMINISTRADOR",
+  ANALISTA: "ANALISTA_DADOS",
+  PRODUTOR_EXPORTADOR: "PRODUTOR_EXPORTADOR",
+};
+const profileToRole: Record<string, UserRole> = {
+  ADMINISTRADOR: "ADMIN",
+  ANALISTA_DADOS: "ANALISTA",
+  PRODUTOR_EXPORTADOR: "PRODUTOR_EXPORTADOR",
+};
 
+const statusToDatabase: Record<UserStatus, string> = {
+  ACTIVE: "ATIVO",
+  INACTIVE: "INATIVO",
+};
+const databaseToStatus: Record<string, UserStatus> = {
+  ATIVO: "ACTIVE",
+  INATIVO: "INACTIVE",
+};
+
+function toUser(record: DatabaseUser): User {
+  const role = profileToRole[record.perfil];
+  const status = databaseToStatus[record.status];
+  if (!role || !status) {
+    throw new Error(`Perfil ou status inválido para o usuário ${record.id}`);
+  }
+  return {
+    id: record.id,
+    name: record.nome,
+    email: record.email,
+    document: record.cpf ?? undefined,
+    passwordHash: record.senha,
+    role,
+    status,
+  };
+}
+
+class PrismaUserRepository implements UserRepository {
   async list() {
-    return [...this.users];
+    const users = await prisma.usuario.findMany({ orderBy: { nome: "asc" } });
+    return users.map(toUser);
   }
 
   async findByEmail(email: string) {
-    return this.users.find((user) => user.email === email.toLowerCase()) ?? null;
+    const user = await prisma.usuario.findUnique({ where: { email: email.toLowerCase() } });
+    return user ? toUser(user) : null;
   }
 
   async findByDocument(document: string) {
-    return this.users.find((user) => user.document === document) ?? null;
+    const user = await prisma.usuario.findUnique({ where: { cpf: document } });
+    return user ? toUser(user) : null;
   }
 
   async findById(id: string) {
-    return this.users.find((user) => user.id === id) ?? null;
+    const user = await prisma.usuario.findUnique({ where: { id } });
+    return user ? toUser(user) : null;
   }
 
   async create(input: CreateUserInput) {
-    const now = new Date();
-    const user: User = {
-      id: randomUUID(),
-      name: input.name,
-      email: input.email.toLowerCase(),
-      document: input.document,
-      passwordHash: await bcrypt.hash(input.password, 12),
-      role: input.role,
-      status: "ACTIVE",
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.users.push(user);
-    return user;
+    const user = await prisma.usuario.create({
+      data: {
+        nome: input.name,
+        email: input.email.toLowerCase(),
+        cpf: input.document ?? null,
+        senha: await bcrypt.hash(input.password, 12),
+        perfil: roleToProfile[input.role],
+        status: statusToDatabase.ACTIVE,
+      },
+    });
+    return toUser(user);
   }
 
   async updatePassword(id: string, password: string) {
-    const user = await this.findById(id);
-    if (!user) return null;
-
-    user.passwordHash = await bcrypt.hash(password, 12);
-    user.updatedAt = new Date();
-    return user;
+    const result = await prisma.usuario.updateMany({
+      where: { id },
+      data: { senha: await bcrypt.hash(password, 12) },
+    });
+    return result.count ? this.findById(id) : null;
   }
 
   async updateProfile(id: string, input: Pick<CreateUserInput, "name" | "document">) {
-    const user = await this.findById(id);
-    if (!user) return null;
-
-    user.name = input.name;
-    if (input.document !== undefined) user.document = input.document;
-    user.updatedAt = new Date();
-    return user;
+    const result = await prisma.usuario.updateMany({
+      where: { id },
+      data: { nome: input.name, ...(input.document !== undefined && { cpf: input.document }) },
+    });
+    return result.count ? this.findById(id) : null;
   }
 
   async updateRole(id: string, role: UserRole) {
-    const user = await this.findById(id);
-    if (!user) return null;
-
-    user.role = role;
-    user.updatedAt = new Date();
-    return user;
+    const result = await prisma.usuario.updateMany({ where: { id }, data: { perfil: roleToProfile[role] } });
+    return result.count ? this.findById(id) : null;
   }
 
   async updateStatus(id: string, status: UserStatus) {
-    const user = await this.findById(id);
-    if (!user) return null;
-
-    user.status = status;
-    user.updatedAt = new Date();
-    return user;
+    const result = await prisma.usuario.updateMany({ where: { id }, data: { status: statusToDatabase[status] } });
+    return result.count ? this.findById(id) : null;
   }
 }
 
-export const userRepository: UserRepository = new InMemoryUserRepository();
+export const userRepository: UserRepository = new PrismaUserRepository();
 
 export async function seedInitialAdmin() {
   if (!env.ADMIN_NAME || !env.ADMIN_EMAIL || !env.ADMIN_PASSWORD) return;

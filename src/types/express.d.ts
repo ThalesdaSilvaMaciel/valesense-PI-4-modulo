@@ -1,4 +1,4 @@
-import type { UserRole } from "../modules/auth/auth.types.js";
+import type { UserRole } from "../modules/auth/auth.types.ts";
 
 declare global {
   namespace Express {

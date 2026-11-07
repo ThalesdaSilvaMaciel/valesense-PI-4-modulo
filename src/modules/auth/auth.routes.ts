@@ -1,32 +1,35 @@
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
+import { env } from "../../config/env.js";
 import { authenticate } from "../../middleware/authenticate.js";
-import { authRateLimit } from "../../middleware/rate-limit.js";
+import { authIpLimiter, loginAccountLimiter } from "../../middleware/rate-limit.js";
+import { loginPasswordSchema, newPasswordSchema } from "../../lib/password.js";
 import { signToken } from "./token.js";
 import { toPublicUser } from "./auth.types.js";
 import { requestPasswordReset, resetPassword } from "./password-reset.service.js";
 import { userRepository } from "./user.repository.js";
+import { recordAccess } from "../access-log/access-log.js";
 
 const registerSchema = z.object({
-  name: z.string().trim().min(2).max(100),
-  email: z.string().trim().email(),
-  document: z.string().trim().min(11).max(18).optional(),
-  password: z.string().min(8).max(128),
+  name: z.string().trim().min(2).max(120),
+  email: z.string().trim().max(255).email(),
+  document: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(11).max(18).optional()),
+  password: newPasswordSchema,
 });
 
 const loginSchema = z.object({
-  email: z.string().trim().email(),
-  password: z.string().min(1),
+  email: z.string().trim().max(255).email(),
+  password: loginPasswordSchema,
 });
 
 const forgotPasswordSchema = z.object({
-  email: z.string().trim().email(),
+  email: z.string().trim().max(255).email(),
 });
 
 const resetPasswordSchema = z.object({
   token: z.string().length(64),
-  password: z.string().min(8).max(128),
+  password: newPasswordSchema,
 });
 
 const passwordResetResponse = {
@@ -35,8 +38,7 @@ const passwordResetResponse = {
 
 export const authRouter = Router();
 
-
-authRouter.post("/register", authRateLimit, async (request, response, next) => {
+authRouter.post("/register", authIpLimiter, async (request, response, next) => {
   try {
     const input = registerSchema.parse(request.body);
     if (await userRepository.findByEmail(input.email)) {
@@ -47,30 +49,38 @@ authRouter.post("/register", authRateLimit, async (request, response, next) => {
     }
 
     const user = await userRepository.create({ ...input, role: "ANALISTA" });
+    await recordAccess(request, user.id, "CADASTRO", "SUCESSO");
     return response.status(201).json({ user: toPublicUser(user) });
   } catch (error) {
     next(error);
   }
 });
 
-authRouter.post("/login", authRateLimit, async (request, response, next) => {
+authRouter.post("/login", authIpLimiter, loginAccountLimiter, async (request, response, next) => {
   try {
     const input = loginSchema.parse(request.body);
     const user = await userRepository.findByEmail(input.email);
     if (!user || user.status !== "ACTIVE" || !(await bcrypt.compare(input.password, user.passwordHash))) {
+      await recordAccess(request, user?.id ?? null, "LOGIN", "FALHA");
       return response.status(401).json({ error: "E-mail ou senha inválidos" });
     }
 
+    await recordAccess(request, user.id, "LOGIN", "SUCESSO");
     return response.status(200).json({ token: signToken(user), user: toPublicUser(user) });
   } catch (error) {
     next(error);
   }
 });
 
-authRouter.post("/forgot-password", authRateLimit, async (request, response, next) => {
+authRouter.post("/forgot-password", authIpLimiter, async (request, response, next) => {
   try {
     const { email } = forgotPasswordSchema.parse(request.body);
-    await requestPasswordReset(email);
+    const reset = await requestPasswordReset(email);
+
+    if (reset && env.NODE_ENV === "development" && env.DEV_LOG_RESET_LINK) {
+      console.info(`[password-reset] Link de teste para ${reset.email}: http://localhost:5173/reset-password?token=${reset.token}`);
+    }
+
     return response.status(200).json(passwordResetResponse);
   } catch (error) {
     next(error);

@@ -4,33 +4,16 @@ import { z } from "zod";
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3333),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  CORS_ORIGIN: z.string().url().default("http://localhost:5173"),
+  CORS_ORIGIN: z.string().min(1).default("http://localhost:5173,http://localhost:5500,http://127.0.0.1:5500"),
+  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL é obrigatória"),
   JWT_SECRET: z.string().min(16, "JWT_SECRET deve ter pelo menos 16 caracteres"),
   JWT_EXPIRES_IN: z.string().default("8h"),
   PASSWORD_RESET_EXPIRES_MINUTES: z.coerce.number().int().min(5).max(60).default(15),
+  DEV_LOG_RESET_LINK: z.enum(["true", "false"]).transform((value) => value === "true").default("false"),
   ADMIN_NAME: z.string().min(2).optional(),
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
-  WEATHER_SOURCE: z.enum(["mock", "thingspeak"]).default("mock"),
-  THINGSPEAK_CHANNEL_ID: z.string().min(1).optional(),
-  THINGSPEAK_READ_KEY: z.string().min(1).optional(),
-}).superRefine((value, ctx) => {
-  if (value.WEATHER_SOURCE === "thingspeak") {
-    if (!value.THINGSPEAK_CHANNEL_ID) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["THINGSPEAK_CHANNEL_ID"],
-        message: "Obrigatório quando WEATHER_SOURCE=thingspeak",
-      });
-    }
-    if (!value.THINGSPEAK_READ_KEY) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["THINGSPEAK_READ_KEY"],
-        message: "Obrigatório quando WEATHER_SOURCE=thingspeak",
-      });
-    }
-  }
 });
 
 const parsed = envSchema.safeParse(process.env);
